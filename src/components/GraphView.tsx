@@ -82,8 +82,25 @@ const COLORS = {
 // ============ Main Component ============
 export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null)
-  const [nodes, setNodes] = useState<Node[]>(mockNodes)
-  const [edges, setEdges] = useState<Edge[]>(mockEdges)
+  // Initialize from localStorage, fall back to mock data
+  const [nodes, setNodes] = useState<Node[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('graph_nodes')
+        if (saved) return JSON.parse(saved)
+      } catch {}
+    }
+    return mockNodes
+  })
+  const [edges, setEdges] = useState<Edge[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('graph_edges')
+        if (saved) return JSON.parse(saved)
+      } catch {}
+    }
+    return mockEdges
+  })
   const [draggingNode, setDraggingNode] = useState<string | null>(null)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [hoveredNode, setHoveredNode] = useState<string | null>(null)
@@ -104,13 +121,34 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
   const [sidebarFilter, setSidebarFilter] = useState<string>('all')
 
   // Node expansion
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['1']))
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('graph_expanded')
+        if (saved) return new Set(JSON.parse(saved))
+      } catch {}
+    }
+    return new Set(['1'])
+  })
 
   // Context menu
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
 
   // Edge detail modal
   const [edgeModal, setEdgeModal] = useState<EdgeModal | null>(null)
+
+  // Persist to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('graph_nodes', JSON.stringify(nodes))
+  }, [nodes])
+
+  useEffect(() => {
+    localStorage.setItem('graph_edges', JSON.stringify(edges))
+  }, [edges])
+
+  useEffect(() => {
+    localStorage.setItem('graph_expanded', JSON.stringify([...expandedNodes]))
+  }, [expandedNodes])
 
   // Measure SVG
   useEffect(() => {
