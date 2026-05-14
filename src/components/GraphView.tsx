@@ -1111,6 +1111,11 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
         {leftSidebarOpen ? '◀' : '▶'}
       </button>
 
+      {/* ========== Zoom indicator ========== */}
+      <div className="absolute bottom-6 right-6 z-30 px-3 py-1.5 rounded-lg text-xs font-mono" style={{ backgroundColor: 'rgba(17,17,24,0.85)', border: `1px solid ${COLORS.sidebarBorder}`, color: COLORS.textMuted }}>
+        缩放 {Math.round(viewTransform.scale * 100)}%
+      </div>
+
       {/* ========== Empty state ========== */}
       {nodes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center">
