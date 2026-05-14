@@ -87,11 +87,8 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
     }))
   }, [draggingNode, offset])
 
-  // 使用 useEffect 监听全局 mouseup 事件，确保拖拽状态始终被清除
-  useEffect(() => {
-    const handleGlobalMouseUp = () => setDraggingNode(null)
-    document.addEventListener('mouseup', handleGlobalMouseUp)
-    return () => document.removeEventListener('mouseup', handleGlobalMouseUp)
+  const handleMouseUp = useCallback(() => {
+    setDraggingNode(null)
   }, [])
 
   const handleNodeClick = useCallback((e: React.MouseEvent, nodeId: string) => {
@@ -134,6 +131,8 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
         ref={svgRef}
         className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
         onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
         onClick={handleSvgClick}
       >
         <defs>
