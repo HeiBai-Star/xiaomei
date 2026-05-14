@@ -1,29 +1,33 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 cd /home/shabi/projects/magicdong.top
 
-echo "Checking changes..."
-git status
+MSG="${1:-Update site}"
 
 echo "Building project..."
 npm run build
 
-echo "Restoring build output changes..."
+echo "Cleaning build output from git working tree..."
 git restore out 2>/dev/null || true
+git clean -fd out 2>/dev/null || true
+git restore .next 2>/dev/null || true
+git clean -fd .next 2>/dev/null || true
+
+echo "Current source changes:"
+git status --short
 
 echo "Adding source changes..."
-git add .
+git add -A
 
-if git diff --cached --quiet; then
-  echo "No changes to commit."
-  exit 0
+if ! git diff --cached --quiet; then
+  echo "Committing changes..."
+  git commit -m "$MSG"
+else
+  echo "No new source changes to commit."
 fi
 
-echo "Committing changes..."
-git commit -m "Update site"
-
-echo "Pulling latest changes..."
+echo "Pulling latest changes from GitHub..."
 git pull --rebase origin main
 
 echo "Pushing to GitHub..."
