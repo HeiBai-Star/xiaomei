@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 
@@ -18,6 +18,7 @@ const RELATION_TYPES = [
 ]
 
 export default function GraphPage() {
+  const graphRef = useRef<{ addNode: (title: string, desc?: string) => void } | null>(null)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const [editingNode, setEditingNode] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -74,6 +75,7 @@ export default function GraphPage() {
       {/* 图谱画布 */}
       <main className="pt-16 h-screen">
         <GraphView
+          ref={graphRef as React.RefObject<{ addNode: (title: string, desc?: string) => void }>}
           onNodeSelect={setSelectedNode}
           selectedNodeId={selectedNode}
           relationTypes={RELATION_TYPES}
@@ -116,7 +118,10 @@ export default function GraphPage() {
                 </button>
                 <button
                   onClick={() => {
-                    // TODO: 调用 API 创建节点
+                    if (!nodeTitle.trim()) return
+                    graphRef.current?.addNode(nodeTitle.trim(), nodeDescription.trim() || undefined)
+                    setNodeTitle('')
+                    setNodeDescription('')
                     setShowCreateModal(false)
                   }}
                   className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react'
 
 // ============ Types ============
 interface Node {
@@ -25,6 +25,10 @@ interface RelationType {
   value: string
   label: string
   color: string
+}
+
+interface GraphViewHandle {
+  addNode: (title: string, description?: string) => void
 }
 
 interface GraphViewProps {
@@ -80,14 +84,18 @@ const COLORS = {
 }
 
 // ============ Main Component ============
-export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes }: GraphViewProps) {
+const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(({ onNodeSelect, selectedNodeId, relationTypes }, ref) => {
   const svgRef = useRef<SVGSVGElement>(null)
+  // Keep refs to latest state for synchronous localStorage writes
+  const nodesRef = useRef<Node[]>([])
+  const edgesRef = useRef<Edge[]>([])
+
   // Initialize from localStorage, fall back to mock data
   const [nodes, setNodes] = useState<Node[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('graph_nodes')
-        if (saved) return JSON.parse(saved)
+        if (saved) { const p = JSON.parse(saved); nodesRef.current = p; return p }
       } catch {}
     }
     return mockNodes
@@ -96,7 +104,7 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('graph_edges')
-        if (saved) return JSON.parse(saved)
+        if (saved) { const p = JSON.parse(saved); edgesRef.current = p; return p }
       } catch {}
     }
     return mockEdges
@@ -137,18 +145,56 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
   // Edge detail modal
   const [edgeModal, setEdgeModal] = useState<EdgeModal | null>(null)
 
-  // Persist to localStorage on change
-  useEffect(() => {
-    localStorage.setItem('graph_nodes', JSON.stringify(nodes))
-  }, [nodes])
+  // Sync refs + save to localStorage synchronously
+  const saveGraphData = useCallback((n: Node[], e: Edge[]) => {
+    nodesRef.current = n
+    edgesRef.current = e
+    localStorage.setItem('graph_nodes', JSON.stringify(n))
+    localStorage.setItem('graph_edges', JSON.stringify(e))
+  }, [])
 
-  useEffect(() => {
-    localStorage.setItem('graph_edges', JSON.stringify(edges))
-  }, [edges])
+  // Mutation helpers — update refs + state + localStorage atomically
+  const deleteNode = useCallback((id: string) => {
+    const newNodes = nodesRef.current.filter(n => n.id !== id)
+    const newEdges = edgesRef.current.filter(e => e.sourceId !== id && e.targetId !== id)
+    saveGraphData(newNodes, newEdges)
+    setNodes(newNodes)
+    setEdges(newEdges)
+    if (selectedNodeId === id) onNodeSelect(null)
+  }, [selectedNodeId])
 
-  useEffect(() => {
-    localStorage.setItem('graph_expanded', JSON.stringify([...expandedNodes]))
-  }, [expandedNodes])
+  const updateNodePosition = useCallback((id: string, x: number, y: number) => {
+    const newNodes = nodesRef.current.map(n => n.id === id ? { ...n, positionX: x, positionY: y } : n)
+    saveGraphData(newNodes, edgesRef.current)
+    setNodes(newNodes)
+  }, [])
+
+  const addNode = useCallback((node: Node) => {
+    const newNodes = [...nodesRef.current, node]
+    saveGraphData(newNodes, edgesRef.current)
+    setNodes(newNodes)
+  }, [])
+
+  // Expose imperative API to parent
+  useImperativeHandle(ref, () => ({
+    addNode: (title: string, description?: string) => {
+      const newNode: Node = {
+        id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title,
+        description,
+        positionX: 400 + Math.random() * 200,
+        positionY: 300 + Math.random() * 150,
+        color: COLORS.nodeColors[Math.floor(Math.random() * COLORS.nodeColors.length)],
+      }
+      addNode(newNode)
+    },
+  }), [addNode])
+
+  const deleteEdge = useCallback((id: string) => {
+    const newEdges = edgesRef.current.filter(e => e.id !== id)
+    saveGraphData(nodesRef.current, newEdges)
+    setEdges(newEdges)
+  }, [])
 
   // Measure SVG
   useEffect(() => {
@@ -166,6 +212,9 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
   // Global mouseup to clear dragging
   useEffect(() => {
     const handleGlobalMouseUp = () => {
+      if (draggingNode !== null) {
+        saveGraphData(nodesRef.current, edgesRef.current)
+      }
       setDraggingNode(null)
       setIsPanning(false)
     }
@@ -182,9 +231,7 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
         onNodeSelect(null)
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId && !(e.target instanceof HTMLInputElement)) {
-        setNodes(prev => prev.filter(n => n.id !== selectedNodeId))
-        setEdges(prev => prev.filter(edge => edge.sourceId !== selectedNodeId && edge.targetId !== selectedNodeId))
-        onNodeSelect(null)
+        deleteNode(selectedNodeId)
       }
       if (e.key === 'f' && selectedNodeId && !(e.target instanceof HTMLInputElement)) {
         toggleExpandNode(selectedNodeId)
@@ -192,7 +239,7 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNodeId, onNodeSelect])
+  }, [selectedNodeId, onNodeSelect, deleteNode])
 
   // Search logic
   useEffect(() => {
@@ -995,11 +1042,7 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
               跳转关联
             </button>
             <button
-              onClick={() => {
-                setNodes(prev => prev.filter(n => n.id !== selectedNodeId))
-                setEdges(prev => prev.filter(e => e.sourceId !== selectedNodeId && e.targetId !== selectedNodeId))
-                onNodeSelect(null)
-              }}
+              onClick={() => { deleteNode(selectedNodeId) }}
               className="flex-1 text-xs py-1.5 rounded-lg transition-colors"
               style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}
             >
@@ -1064,10 +1107,7 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
 
             <div className="flex justify-end">
               <button
-                onClick={() => {
-                  setEdges(prev => prev.filter(e => e.id !== modalEdge.id))
-                  setEdgeModal(null)
-                }}
+                onClick={() => { deleteEdge(modalEdge.id); setEdgeModal(null) }}
                 className="text-xs px-3 py-1.5 rounded-lg"
                 style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}
               >
@@ -1116,10 +1156,7 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
             <div className="my-1" style={{ borderTop: `1px solid ${COLORS.sidebarBorder}` }} />
             <button
               onClick={() => {
-                const nid = contextMenu.nodeId
-                setNodes(prev => prev.filter(n => n.id !== nid))
-                setEdges(prev => prev.filter(e => e.sourceId !== nid && e.targetId !== nid))
-                if (selectedNodeId === nid) onNodeSelect(null)
+                deleteNode(contextMenu.nodeId)
                 setContextMenu(null)
               }}
               className="w-full text-left text-sm px-4 py-2 flex items-center gap-3 transition-colors"
@@ -1166,4 +1203,6 @@ export default function GraphView({ onNodeSelect, selectedNodeId, relationTypes 
       )}
     </div>
   )
-}
+})
+
+export default GraphView
